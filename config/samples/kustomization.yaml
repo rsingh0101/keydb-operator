@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- keydb_v1_keydb.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
