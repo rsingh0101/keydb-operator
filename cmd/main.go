@@ -43,7 +43,7 @@ import (
 	// +kubebuilder:scaffold:imports
 
 	ctrl "sigs.k8s.io/controller-runtime"
-	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 var (
@@ -86,7 +86,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	opts := ctrlzap.Options{
+	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.ISO8601TimeEncoder, // Prettier timestamps
 		EncoderConfigOptions: []zap.EncoderConfigOption{
@@ -99,7 +99,7 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(ctrlzap.New(ctrlzap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("example")
 	log.Info("🌈 Colorful controller-runtime logs in production mode")
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
