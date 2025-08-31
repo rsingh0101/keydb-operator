@@ -9,3 +9,11 @@ metadata:
 spec:
   replicas: 3
   image: eqalpha/keydb
+  password: password
+  persistence:
+    enabled: true
+    size: 1Gi
+  replication:
+    mode: master-master
+    enabled: true
+    domain: keydb-svc.two:6379

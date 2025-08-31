@@ -92,6 +92,11 @@ func main() {
 		EncoderConfigOptions: []zap.EncoderConfigOption{
 			func(ec *zapcore.EncoderConfig) {
 				ec.EncodeLevel = zapcore.CapitalColorLevelEncoder // <- Color
+				ec.EncodeTime = zapcore.ISO8601TimeEncoder
+				ec.EncodeCaller = zapcore.ShortCallerEncoder
+				ec.EncodeDuration = zapcore.StringDurationEncoder
+				ec.EncodeName = zapcore.FullNameEncoder
+				ec.FunctionKey = zapcore.OmitKey
 			},
 		},
 		DestWriter: os.Stdout,
@@ -100,8 +105,8 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-	log := ctrl.Log.WithName("example")
-	log.Info("🌈 Colorful controller-runtime logs in production mode")
+	// log := ctrl.Log.WithName("example")
+	// log.Info("🌈 Colorful controller-runtime logs in production mode")
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and

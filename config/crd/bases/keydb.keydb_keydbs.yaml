@@ -39,15 +39,49 @@ spec:
           spec:
             description: KeydbSpec defines the desired state of Keydb.
             properties:
-              foo:
+              image:
                 description: Foo is an example field of Keydb. Edit keydb_types.go
                   to remove/update
                 type: string
-              image:
+              password:
                 type: string
+              persistence:
+                properties:
+                  enabled:
+                    type: boolean
+                  size:
+                    type: string
+                  storageClassName:
+                    type: string
+                required:
+                - enabled
+                type: object
               replicas:
                 format: int32
                 type: integer
+              replication:
+                properties:
+                  domain:
+                    items:
+                      type: string
+                    type: array
+                  enabled:
+                    type: boolean
+                  keydb:
+                    properties:
+                      host:
+                        type: string
+                      name:
+                        type: string
+                    type: object
+                  mode:
+                    type: string
+                  port:
+                    format: int32
+                    type: integer
+                required:
+                - enabled
+                type: object
             type: object
           status:
             description: KeydbStatus defines the observed state of Keydb.

@@ -29,9 +29,28 @@ type KeydbSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Keydb. Edit keydb_types.go to remove/update
-	Foo      string `json:"foo,omitempty"`
-	Image    string `json:"image,omitempty"`
-	Replicas *int32 `json:"replicas,omitempty"`
+	Image       string          `json:"image,omitempty"`
+	Replicas    *int32          `json:"replicas,omitempty"`
+	Replication ReplicationSpec `json:"replication,omitempty"`
+	Persistence PersistenceSpec `json:"persistence,omitempty"`
+	Password    string          `json:"password,omitempty"`
+}
+
+type ReplicationSpec struct {
+	Enabled bool             `json:"enabled"`
+	Mode    string           `json:"mode,omitempty"`
+	Domain  []string         `json:"domain,omitempty"`
+	Keydb   KeydbAddressSpec `json:"keydb,omitempty"`
+	Port    int32            `json:"port,omitempty"`
+}
+type PersistenceSpec struct {
+	Enabled          bool   `json:"enabled"`
+	Size             string `json:"size,omitempty"`
+	StorageClassName string `json:"storageClassName,omitempty"`
+}
+type KeydbAddressSpec struct {
+	Namespace string `json:"host,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 // KeydbStatus defines the observed state of Keydb.

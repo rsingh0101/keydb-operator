@@ -1,8 +1,15 @@
 # keydb-operator
-// TODO(user): Add simple overview of use/purpose
+Keydb Operator for all basic operations for production level deployments.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Offers following features:
+    Lifecycle management
+    Replication
+    Tracability
+    Scaling
+    Auto-healing
+    Topological flexibility
+    Fault tolerance
 
 ## Getting Started
 

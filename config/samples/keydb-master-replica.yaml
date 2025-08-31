@@ -1,0 +1,44 @@
+apiVersion: keydb.keydb/v1
+kind: Keydb
+metadata:
+  labels:
+    app.kubernetes.io/name: keydb-operator
+  name: keydb
+  namespace: one
+spec:
+  replicas: 3
+  image: docker.io/bitnami/keydb:6.3.4-debian-12-r24
+  password: password
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: standard
+  replication:
+    mode: master-master
+    enabled: true
+    domain: 
+      - keydb-headless.two.svc.cluster.local
+    port: 6379
+# ---
+# apiVersion: keydb.keydb/v1
+# kind: Keydb
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: keydb-operator
+#   name: keydb
+#   namespace: two
+# spec:
+#   replicas: 3
+#   image: eqalpha/keydb
+#   password: password
+#   persistence:
+#     enabled: true
+#     size: 1Gi
+#     storageClassName: standard
+#   replication:
+#     mode: master-master
+#     enabled: true
+#     domain: 
+#       - keydb-headless.one.svc.cluster.local
+#     port: 6379
+
