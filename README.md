@@ -1,6 +1,6 @@
 # Keydb-k8s operator
 
-<img src="https://github.com/rsingh0101/keydb-operator/blob/main/images/k8skeydb.png">
+<img src="https://github.com/rsingh0101/keydb-operator/blob/main/images/k8skeydb.png" width="300" height="300">
 
 Keydb Operator for all basic operations for production level deployments.
 
