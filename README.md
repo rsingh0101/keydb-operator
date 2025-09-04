@@ -1,15 +1,19 @@
-# keydb-operator
+# Keydb-k8s operator
+
+<img src="https://github.com/rsingh0101/keydb-operator/images/k8skeydb.png">
+
 Keydb Operator for all basic operations for production level deployments.
 
 ## Description
-Offers following features:
-    Lifecycle management
-    Replication
-    Tracability
-    Scaling
-    Auto-healing
-    Topological flexibility
-    Fault tolerance
+
+Operator offers following features:
+- Lifecycle management
+- Replication
+- Tracability
+- Scaling
+- Auto-healing
+- Topological flexibility
+- Fault tolerance
 
 ## Getting Started
 
