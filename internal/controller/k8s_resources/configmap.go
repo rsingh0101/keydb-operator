@@ -17,46 +17,58 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 	// Base config
 	config := []string{
 		"bind 0.0.0.0 ::",
-		"protected-mode no",
+		"protected-mode yes",
 		"dir /bitnami/keydb/data",
 		"port 6379",
 		"loglevel notice",
 		"appendonly yes",
-		fmt.Sprintf("requirepass %s", k.Spec.Password),
 	}
 
-	// Only add replication bits if enabled
-	if k.Spec.Replication.Enabled {
-		switch k.Spec.Replication.Mode {
-		case "master-replica":
-			host := NormalizeFQDN(k.Spec.Replication.Domain[0])
-			port := k.Spec.Replication.Port
-			config = append(config,
-				fmt.Sprintf("replicaof %s %d", host, port),
-				fmt.Sprintf("masterauth %s", k.Spec.Password),
-				"replica-read-consistency yes",
-				"repl-diskless-sync yes",
-				"repl-diskless-sync-delay 0",
-			)
-		case "master-master":
-			// Active-active multi-master mesh
-			config = append(config,
-				"active-replica yes",
-				"multi-master yes",
-				"replica-read-only no",
-				"repl-diskless-sync yes",
-				"repl-diskless-sync-delay 0",
-			)
-
-			// Generate replicaof lines for all pods in the StatefulSet
-			for _, domain := range k.Spec.Replication.Domain {
-				host := NormalizeFQDN(domain)
-				config = append(config,
-					fmt.Sprintf("replicaof %s %d", host, k.Spec.Replication.Port),
-					fmt.Sprintf("masterauth %s", k.Spec.Password),
-				)
-			}
+	switch k.Spec.Replication.Mode {
+	case "master-replica":
+		if len(k.Spec.Replication.Domain) == 0 {
+			return nil, fmt.Errorf("Replication mode master-replica requires atleast one domain")
 		}
+		masterhost := fmt.Sprintf("%s-0.%s-headless.%s.svc.cluster.local", k.Name, k.Name, k.Namespace)
+		config = append(config,
+			fmt.Sprintf("replicaof %s %d", masterhost, 6379),
+			"repl-diskless-sync yes",
+			"repl-diskless-sync-delay 0",
+		)
+		host := NormalizeFQDN(k.Spec.Replication.Domain[0])
+		port := k.Spec.Replication.Port
+		config = append(config,
+			fmt.Sprintf("replicaof %s %d", host, port),
+			"repl-diskless-sync yes",
+			"repl-diskless-sync-delay 0",
+		)
+	case "master-master":
+		config = append(config,
+			"active-replica yes",
+			"multi-master yes",
+			"replica-read-only no",
+			"repl-diskless-sync yes",
+			"repl-diskless-sync-delay 0",
+		)
+		masterhost := fmt.Sprintf("%s-0.%s-headless.%s.svc.cluster.local", k.Name, k.Name, k.Namespace)
+		config = append(config,
+			fmt.Sprintf("replicaof %s %d", masterhost, 6379),
+			"repl-diskless-sync yes",
+			"repl-diskless-sync-delay 0",
+		)
+		for _, domain := range k.Spec.Replication.Domain {
+			host := NormalizeFQDN(domain)
+			config = append(config,
+				fmt.Sprintf("replicaof %s %d", host, k.Spec.Replication.Port),
+			)
+		}
+	default:
+		masterhost := fmt.Sprintf("%s-0.%s-headless.%s.svc.cluster.local", k.Name, k.Name, k.Namespace)
+		config = append(config,
+			fmt.Sprintf("replicaof %s %d", masterhost, 6379),
+			"repl-diskless-sync yes",
+			"repl-diskless-sync-delay 0",
+		)
 	}
 
 	cm := &corev1.ConfigMap{
@@ -90,6 +102,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 						-h localhost \
 						-a "$KEYDB_PASSWORD" \
 						-p $KEYDB_PORT_NUMBER \
+						--no-auth-warning \
 						ping
 				)
 				if [[ "$?" -eq "124" ]]; then
@@ -104,13 +117,13 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 
 			. /opt/bitnami/scripts/keydb-env.sh
 			. /opt/bitnami/scripts/liblog.sh
-
 			response=$(
 				timeout -s 15 $1 \
 				keydb-cli \
 					-h localhost \
 					-a "$KEYDB_PASSWORD" \
 					-p $KEYDB_PORT_NUMBER \
+					--no-auth-warning \
 					ping
 			)
 			if [[ "$?" -eq "124" ]]; then
@@ -126,13 +139,13 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 
 			. /opt/bitnami/scripts/keydb-env.sh
 			. /opt/bitnami/scripts/liblog.sh
-
 			response=$(
 				timeout -s 15 $1 \
 				keydb-cli \
-					-h keydb-master \
+					-h keydb-headless \
 					-p 6379 \
 					-a "$KEYDB_MASTER_PASSWORD" \
+					--no-auth-warning \
 					ping
 			)
 			if [[ "$?" -eq "124" ]]; then
@@ -149,9 +162,10 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 					response=$(
 						timeout -s 15 $1 \
 						keydb-cli \
-							-h keydb-master \
+							-h keydb-headless \
 							-p 6379 \
 							-a "$KEYDB_MASTER_PASSWORD" \
+							--no-auth-warning \
 							ping
 					)
 					if [[ "$?" -eq "124" ]]; then
@@ -172,7 +186,6 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 				"$script_dir/ping_readiness_master.sh" $1 || exit_status=$?
 				exit $exit_status`,
 			"ping_liveness_local_and_master.sh": `#!/bin/bash
-
 				script_dir="$(dirname "$0")"
 				exit_status=0
 				"$script_dir/ping_liveness_local.sh" $1 || exit_status=$?

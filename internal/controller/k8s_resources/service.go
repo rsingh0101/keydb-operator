@@ -45,8 +45,9 @@ func GenerateService(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1.Servic
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: corev1.ClusterIPNone,
-			Selector:  labels,
+			ClusterIP:                corev1.ClusterIPNone,
+			PublishNotReadyAddresses: true,
+			Selector:                 labels,
 			Ports: []corev1.ServicePort{
 				{
 					Name: "redis",

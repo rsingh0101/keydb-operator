@@ -18,6 +18,122 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 		"apps": k.Name,
 	}
 	storageClassName := k.Spec.Persistence.StorageClassName
+	var volumeClaimTemplates []corev1.PersistentVolumeClaim
+	if k.Spec.Persistence.Size != "" {
+		volumeClaimTemplates = []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "data-" + k.Name + "-pvc",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteOnce,
+					},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse(k.Spec.Persistence.Size),
+						},
+					},
+					StorageClassName: &storageClassName,
+				},
+			},
+		}
+	}
+
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      k.Name + "-config",
+			MountPath: "/opt/bitnami/keydb/etc/",
+		},
+		{
+			Name:      k.Name + "-healthz",
+			MountPath: "/opt/bitnami/scripts/health",
+			ReadOnly:  true,
+		},
+		{
+			Name:      k.Name + "-secret",
+			MountPath: "/opt/bitnami/keydb/secrets",
+		},
+		{
+			Name:      "empty-dir",
+			MountPath: "/tmp",
+			SubPath:   "tmp-dir",
+		},
+	}
+
+	volumes := []corev1.Volume{
+		{
+			Name: k.Name + "-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: k.Name + "-config",
+					},
+				},
+			},
+		},
+		{
+			Name: k.Name + "-healthz",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: k.Name + "-healthz",
+					},
+					DefaultMode: func() *int32 { m := int32(0755); return &m }(),
+				},
+			},
+		},
+		{
+			Name: k.Name + "-secret",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: k.Name + "-secret",
+					Items: []corev1.KeyToPath{
+						{
+							Key:  "password",
+							Path: "password",
+						},
+					},
+				},
+			},
+		},
+		{
+			Name: "empty-dir",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+	}
+	// Only add PVC if persistence is enabled
+	if k.Spec.Persistence.Enabled {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "data-" + k.Name + "-pvc",
+			MountPath: "/bitnami/keydb/data/",
+		})
+
+		volumes = append(volumes, corev1.Volume{
+			Name: "data-" + k.Name + "-pvc",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "data-" + k.Name + "-pvc",
+				},
+			},
+		})
+	} else {
+		// use EmptyDir as fallback
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "data-empty-dir",
+			MountPath: "/bitnami/keydb/data/",
+		})
+
+		volumes = append(volumes, corev1.Volume{
+			Name: "data-empty-dir",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+	}
+
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      k.Name,
@@ -29,31 +145,20 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
-			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "data-" + k.Name + "-pvc",
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							corev1.ReadWriteOnce,
-						},
-						Resources: corev1.VolumeResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: resource.MustParse(k.Spec.Persistence.Size),
-							},
-						},
-						StorageClassName: &storageClassName,
-					},
-				},
-			},
-			ServiceName: k.Name + "-headless",
+			VolumeClaimTemplates: volumeClaimTemplates,
+			ServiceName:          k.Name + "-headless",
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: k.Name,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: &[]bool{true}[0],
+						RunAsUser:    &[]int64{1001}[0],
+						RunAsGroup:   &[]int64{1001}[0],
+						FSGroup:      &[]int64{1001}[0],
+					},
 					Containers: []corev1.Container{
 						{
 
@@ -69,12 +174,7 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 							},
 							Args: []string{
 								"-ec",
-								`. /opt/bitnami/scripts/keydb-env.sh && \
-                 args=("/opt/bitnami/keydb/etc/keydb.conf") \
-                 args+=("--requirepass "$KEYDB_PASSWORD") \
-                 args+=("--masterauth "$KEYDB_MASTER_PASSWORD") \
-                 args+=("--replicaof keydb-0 6379") \
-				 exec keydb-server "${args[@]}"`,
+								`. /opt/bitnami/scripts/keydb-env.sh;args=("/opt/bitnami/keydb/etc/keydb.conf");args+=("--requirepass" "$KEYDB_PASSWORD");args+=("--masterauth" "$KEYDB_MASTER_PASSWORD");exec keydb-server "${args[@]}"`,
 							},
 							Ports: []corev1.ContainerPort{
 								{
@@ -116,26 +216,12 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 							},
 							Env: []corev1.EnvVar{
 								{
-									Name: "KEYDB_PASSWORD_FILE",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: k.Name + "-secret",
-											},
-											Key: "password",
-										},
-									},
+									Name:  "KEYDB_PASSWORD_FILE",
+									Value: "/opt/bitnami/keydb/secrets/password",
 								},
 								{
-									Name: "KEYDB_MASTER_PASSWORD_FILE",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: k.Name + "-secret",
-											},
-											Key: "password",
-										},
-									},
+									Name:  "KEYDB_MASTER_PASSWORD_FILE",
+									Value: "/opt/bitnami/keydb/secrets/password",
 								},
 								{
 									Name:  "KEYDB_PORT_NUMBER",
@@ -146,82 +232,10 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 									Value: "false",
 								},
 							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      k.Name + "-config",
-									MountPath: "/opt/bitnami/keydb/etc/",
-								},
-								{
-									Name:      "data-" + k.Name + "-pvc",
-									MountPath: "/bitnami/keydb/data/",
-								},
-								{
-									Name:      k.Name + "-healthz",
-									MountPath: "/opt/bitnami/scripts/health",
-									ReadOnly:  true,
-								},
-								{
-									Name:      k.Name + "-secret",
-									MountPath: "/opt/bitnami/keydb/secrets",
-								},
-								{
-									Name:      "empty-dir",
-									MountPath: "/tmp",
-									SubPath:   "tmp-dir",
-								},
-							},
+							VolumeMounts: volumeMounts,
 						},
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "data-" + k.Name + "-pvc",
-							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: "data-" + k.Name + "-pvc",
-								},
-							},
-						},
-						{
-							Name: k.Name + "-config",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: k.Name + "-config",
-									},
-								},
-							},
-						},
-						{
-							Name: k.Name + "-healthz",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: k.Name + "-healthz",
-									},
-								},
-							},
-						},
-						{
-							Name: k.Name + "-secret",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: k.Name + "-secret",
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "password",
-											Path: "password",
-										},
-									},
-								},
-							},
-						},
-						{
-							Name: "empty-dir",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-					},
+					Volumes: volumes,
 				},
 			},
 		},

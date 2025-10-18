@@ -1,0 +1,18 @@
+apiVersion: keydb.keydb/v1
+kind: Keydb
+metadata:
+  labels:
+    app.kubernetes.io/name: keydb-operator
+  name: keydb-testing
+  namespace: one
+spec:
+  replicas: 3
+  image: docker.io/bitnami/keydb:6.3.4-debian-12-r24
+  replication:
+    # mode: master-master
+    enabled: true
+    # domain: 
+    #   - keydb-headless.one.svc.cluster.local
+    # port: 6379
+  persistence:
+    enabled: false

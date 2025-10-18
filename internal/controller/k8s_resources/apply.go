@@ -2,10 +2,16 @@ package k8sresources
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -13,11 +19,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
+func checksumConfigMap(cm *corev1.ConfigMap) string {
+	h := sha256.New()
+	for k, v := range cm.Data {
+		h.Write([]byte(k))
+		h.Write([]byte(v))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func CreateorUpdateResource(ctx context.Context, c client.Client, scheme *runtime.Scheme, obj client.Object, log logr.Logger) error {
-	// resourceLog := log.WithValues(
-	// 	"name", obj.GetName(),
-	// 	"namespace", obj.GetNamespace(),
-	// )
 	key := types.NamespacedName{
 		Name:      obj.GetName(),
 		Namespace: obj.GetNamespace(),
@@ -40,6 +51,27 @@ func CreateorUpdateResource(ctx context.Context, c client.Client, scheme *runtim
 			return err
 		}
 		PrintResourceLog(ctx, "Updated", obj, scheme)
+		if obj.GetObjectKind().GroupVersionKind().Kind == "ConfigMap" {
+			sts := &appsv1.StatefulSet{}
+			stsKey := types.NamespacedName{
+				Name:      strings.TrimSuffix(obj.GetName(), "-config"),
+				Namespace: obj.GetNamespace(),
+			}
+			if err := c.Get(ctx, stsKey, sts); err != nil {
+				log.Error(err, "failed to fetch statefulset")
+				return err
+			}
+			if sts.Spec.Template.Annotations == nil {
+				sts.Spec.Template.Annotations = make(map[string]string)
+
+			}
+			sts.Spec.Template.Annotations["restartedAt"] = time.Now().Format(time.RFC3339)
+			if err := c.Update(ctx, sts); err != nil {
+				log.Error(err, "failed to restart statefulset")
+				return err
+			}
+			PrintResourceLog(ctx, "Restarted Statefulset successfully", sts, scheme)
+		}
 	}
 	return nil
 }
