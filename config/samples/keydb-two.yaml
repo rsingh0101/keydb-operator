@@ -1,0 +1,20 @@
+apiVersion: keydb.keydb/v1
+kind: Keydb
+metadata:
+  name: keydb-two
+  namespace: default
+spec:
+  replicas: 3
+  image: bitnamilegacy/keydb:latest
+  passwordSecret:
+    name: keydb-secret
+    key: password
+  persistence:
+    enabled: true
+    size: 1Gi
+  replication:
+    mode: master-master
+    enabled: true
+    domain:
+      - keydb-headless.default.svc.cluster.local
+    port: 6379

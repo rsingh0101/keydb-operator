@@ -15,11 +15,16 @@ import (
 )
 
 func GenerateSecret(k *keydbv1.Keydb, scheme *runtime.Scheme, c client.Client) *corev1.Secret {
+	// If the user provided a secret, we don't need to generate one
+	if k.Spec.PasswordSecret != nil {
+		return nil
+	}
+
 	labels := map[string]string{"apps": k.Name}
 	secretName := k.Name + "-secret"
 
-	// Default: use Spec.Password if provided
-	setPassword := k.Spec.Password
+	// Default: if a previous version had a plain password, or if anything still sets it (now removed but kept for safety)
+	setPassword := ""
 
 	// Try to fetch existing secret to reuse password
 	var existing corev1.Secret

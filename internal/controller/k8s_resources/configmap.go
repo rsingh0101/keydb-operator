@@ -27,7 +27,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 	switch k.Spec.Replication.Mode {
 	case "master-replica":
 		if len(k.Spec.Replication.Domain) == 0 {
-			return nil, fmt.Errorf("Replication mode master-replica requires atleast one domain")
+			return nil, fmt.Errorf("replication mode master-replica requires atleast one domain")
 		}
 		masterhost := fmt.Sprintf("%s-0.%s-headless.%s.svc.cluster.local", k.Name, k.Name, k.Namespace)
 		config = append(config,
@@ -86,14 +86,36 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 		return nil, err
 	}
 
-	health_cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      k.Name + "-healthz",
-			Namespace: k.Namespace,
-			Labels:    labels,
-		},
-		Data: map[string]string{
-			"ping_readiness_local.sh": `#!/bin/bash
+	// Add init script to handle pod-specific config for master-master mode
+	initScript := ""
+	if k.Spec.Replication.Mode == "master-master" {
+		masterhost := fmt.Sprintf("%s-0.%s-headless.%s.svc.cluster.local", k.Name, k.Name, k.Namespace)
+		// Escape dots and special chars for sed
+		masterhostEscaped := strings.ReplaceAll(masterhost, ".", "\\.")
+		initScript = fmt.Sprintf(`#!/bin/bash
+# Fix config for master-master mode: pod-0 should not replicate from itself
+CONFIG_SOURCE="/opt/bitnami/keydb/etc/keydb.conf"
+CONFIG_FILE="/tmp/keydb.conf"
+POD_NAME="${HOSTNAME}"
+
+# Copy config to writable location
+cp "${CONFIG_SOURCE}" "${CONFIG_FILE}"
+
+# Extract pod index from hostname (format: keydb-0, keydb-1, etc.)
+POD_INDEX=$(echo "${POD_NAME}" | grep -oE '[0-9]+$' || echo "")
+
+# If this is pod-0, remove the replicaof line that points to itself
+if [ "${POD_INDEX}" = "0" ]; then
+	# Remove replicaof line that points to pod-0 (match hostname and port 6379)
+	sed -i '/^replicaof %s 6379$/d' "${CONFIG_FILE}"
+fi
+
+# Export the modified config path for use by keydb-server
+export KEYDB_MODIFIED_CONFIG="${CONFIG_FILE}"`, masterhostEscaped)
+	}
+
+	healthData := map[string]string{
+		"ping_readiness_local.sh": `#!/bin/bash
 				. /opt/bitnami/scripts/keydb-env.sh
 				. /opt/bitnami/scripts/liblog.sh
 				response=$(
@@ -113,7 +135,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 					error "$response"
 					exit 1
 				fi`,
-			"ping_liveness_local.sh": `#!/bin/bash
+		"ping_liveness_local.sh": `#!/bin/bash
 
 			. /opt/bitnami/scripts/keydb-env.sh
 			. /opt/bitnami/scripts/liblog.sh
@@ -135,7 +157,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 				error "$response"
 				exit 1
 			fi`,
-			"ping_readiness_master.sh": `#!/bin/bash
+		"ping_readiness_master.sh": `#!/bin/bash
 
 			. /opt/bitnami/scripts/keydb-env.sh
 			. /opt/bitnami/scripts/liblog.sh
@@ -156,7 +178,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 				error "$response"
 				exit 1
 			fi`,
-			"ping_liveness_master.sh": `#!/bin/bash
+		"ping_liveness_master.sh": `#!/bin/bash
 					. /opt/bitnami/scripts/keydb-env.sh
 					. /opt/bitnami/scripts/liblog.sh
 					response=$(
@@ -177,7 +199,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 						error "$response"
 						exit 1
 					fi`,
-			"ping_readiness_local_and_master.sh": `#!/bin/bash
+		"ping_readiness_local_and_master.sh": `#!/bin/bash
 			 #!/bin/bash
 
 				script_dir="$(dirname "$0")"
@@ -185,14 +207,55 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 				"$script_dir/ping_readiness_local.sh" $1 || exit_status=$?
 				"$script_dir/ping_readiness_master.sh" $1 || exit_status=$?
 				exit $exit_status`,
-			"ping_liveness_local_and_master.sh": `#!/bin/bash
+		"ping_liveness_local_and_master.sh": `#!/bin/bash
 				script_dir="$(dirname "$0")"
 				exit_status=0
-				"$script_dir/ping_liveness_local.sh" $1 || exit_status=$?
-				"$script_dir/ping_liveness_master.sh" $1 || exit_status=$?
+				"$script_dir/ping_liveness_local.sh" "$1" || exit_status=$?
+				"$script_dir/ping_liveness_master.sh" "$1" || exit_status=$?
 				exit $exit_status
 			`,
+		"config_reloader.sh": `#!/bin/bash
+LAST_HASH=""
+while true; do
+  if [ ! -f /opt/bitnami/keydb/etc/keydb.conf ]; then
+    sleep 5
+    continue
+  fi
+  HASH=$(md5sum /opt/bitnami/keydb/etc/keydb.conf | awk '{print $1}')
+  if [ -n "$LAST_HASH" ] && [ "$HASH" != "$LAST_HASH" ]; then
+    echo "Configuration change detected. Reloading KeyDB dynamically..."
+    
+    while read line || [ -n "$line" ]; do
+      if [[ -z "$line" || "$line" == \#* ]]; then continue; fi
+      key=$(echo "$line" | awk '{print $1}')
+      val=$(echo "$line" | cut -d' ' -f2-)
+      
+      if [[ "$key" != "replicaof" && "$key" != "dir" && "$key" != "port" && "$key" != "bind" ]]; then
+        echo "Applying CONFIG SET $key $val"
+        keydb-cli -h localhost -p $KEYDB_PORT_NUMBER -a "$KEYDB_PASSWORD" CONFIG SET "$key" "$val"
+      elif echo "$line" | grep -q "replicaof"; then
+        echo "Applying REPLICAOF $val"
+        keydb-cli -h localhost -p $KEYDB_PORT_NUMBER -a "$KEYDB_PASSWORD" REPLICAOF $val
+      fi
+    done < /opt/bitnami/keydb/etc/keydb.conf
+  fi
+  LAST_HASH=$HASH
+  sleep 10
+done`,
+	}
+
+	// Only add fix script if it's not empty (i.e., for master-master mode)
+	if initScript != "" {
+		healthData["fix_replication_config.sh"] = initScript
+	}
+
+	health_cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k.Name + "-healthz",
+			Namespace: k.Namespace,
+			Labels:    labels,
 		},
+		Data: healthData,
 	}
 
 	return []*corev1.ConfigMap{cm, health_cm}, nil
