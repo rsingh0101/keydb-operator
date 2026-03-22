@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+    http:// www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -37,30 +37,30 @@ import (
 
 const keydbFinalizer = "keydb.keydb/finalizer"
 
-// KeydbReconciler reconciles a Keydb object
+//  KeydbReconciler reconciles a Keydb object
 type KeydbReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+//  +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs,verbs=get;list;watch;create;update;patch;delete
+//  +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs/status,verbs=get;update;patch
+//  +kubebuilder:rbac:groups=keydb.keydb,resources=keydbs/finalizers,verbs=update
+//  +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+//  +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
+//  +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+//  +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Keydb object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
+//  Reconcile is part of the main kubernetes reconciliation loop which aims to
+//  move the current state of the cluster closer to the desired state.
+//  TODO(user): Modify the Reconcile function to compare the state specified by
+//  the Keydb object against the actual cluster state, and then
+//  perform operations to make the cluster state reflect the state specified by
+//  the user.
+// 
+//  For more details, check Reconcile and its Result here:
+//  - https:// pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -70,10 +70,10 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Handle deletion
+	//  Handle deletion
 	if !keydb.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&keydb, keydbFinalizer) {
-			// finalizer logic
+			//  finalizer logic
 			controllerutil.RemoveFinalizer(&keydb, keydbFinalizer)
 			if err := r.Update(ctx, &keydb); err != nil {
 				logger.Error(err, "failed to remove finalizer from keydb")
@@ -83,7 +83,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	// Ensure finalizer is present
+	//  Ensure finalizer is present
 	if !controllerutil.ContainsFinalizer(&keydb, keydbFinalizer) {
 		controllerutil.AddFinalizer(&keydb, keydbFinalizer)
 		if err := r.Update(ctx, &keydb); err != nil {
@@ -92,8 +92,8 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	// inside your Reconcile after you’ve fetched Keydb CR
-	cmList, err := k8sresources.GenerateKeydbConfigMap(&keydb, r.Scheme) // returns []*corev1.ConfigMap
+	//  inside your Reconcile after you’ve fetched Keydb CR
+	cmList, err := k8sresources.GenerateKeydbConfigMap(&keydb, r.Scheme) //  returns []*corev1.ConfigMap
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -114,7 +114,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		secretHash = "custom-" + keydb.Spec.PasswordSecret.Name
 	}
 
-	// Now statefulset: inject hashes as podTemplate annotations
+	//  Now statefulset: inject hashes as podTemplate annotations
 	sts := k8sresources.GenerateStatefulSet(&keydb, r.Scheme)
 	if sts.Spec.Template.Annotations == nil {
 		sts.Spec.Template.Annotations = map[string]string{}
@@ -125,7 +125,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	//services
+	//  services
 	svcList, err := k8sresources.GenerateService(&keydb, r.Scheme)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -136,19 +136,19 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	// ServiceAccount
+	//  ServiceAccount
 	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, k8sresources.GenerateServiceAccount(&keydb, r.Scheme), logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Pod Disruption Budget
+	//  Pod Disruption Budget
 	pdb := k8sresources.GeneratePodDisruptionBudget(&keydb, r.Scheme)
 	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, pdb, logger); err != nil {
 		logger.Error(err, "failed to create/update PodDisruptionBudget")
-		// Don't fail reconciliation if PDB fails, but log it
+		//  Don't fail reconciliation if PDB fails, but log it
 	}
 
-	// Get the current StatefulSet to update status
+	//  Get the current StatefulSet to update status
 	var currentSts appsv1.StatefulSet
 	stsKey := types.NamespacedName{
 		Name:      keydb.Name,
@@ -157,7 +157,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if err := r.Get(ctx, stsKey, &currentSts); err != nil {
 		logger.V(1).Info("StatefulSet not found yet, will update status on next reconcile", "error", err)
 	} else {
-		// Update status based on StatefulSet
+		//  Update status based on StatefulSet
 		if err := r.updateStatus(ctx, &keydb, &currentSts); err != nil {
 			logger.Error(err, "failed to update status")
 		}
@@ -167,11 +167,11 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
-// updateStatus updates the KeyDB status based on the StatefulSet status
+//  updateStatus updates the KeyDB status based on the StatefulSet status
 func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb, sts *appsv1.StatefulSet) error {
 	logger := log.FromContext(ctx)
 
-	// Get current statefulset status
+	//  Get current statefulset status
 	readyReplicas := int32(0)
 	currentReplicas := int32(0)
 	if sts != nil {
@@ -179,14 +179,14 @@ func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb
 		currentReplicas = sts.Status.Replicas
 	}
 
-	// Update status
+	//  Update status
 	keydb.Status.ReadyReplicas = readyReplicas
 	keydb.Status.CurrentReplicas = currentReplicas
 	keydb.Status.ObservedGeneration = keydb.Generation
 	now := metav1.Now()
 	keydb.Status.LastUpdateTime = &now
 
-	// Determine phase
+	//  Determine phase
 	desiredReplicas := int32(1)
 	if keydb.Spec.Replicas != nil {
 		desiredReplicas = *keydb.Spec.Replicas
@@ -204,10 +204,10 @@ func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb
 	}
 	keydb.Status.Phase = phase
 
-	// Update conditions
+	//  Update conditions
 	r.updateConditions(keydb, readyReplicas, desiredReplicas, currentReplicas)
 
-	// Update replica status
+	//  Update replica status
 	r.updateReplicaStatus(ctx, keydb, sts)
 
 	if err := r.Status().Update(ctx, keydb); err != nil {
@@ -218,9 +218,9 @@ func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb
 	return nil
 }
 
-// updateConditions updates the conditions in the KeyDB status
+//  updateConditions updates the conditions in the KeyDB status
 func (r *KeydbReconciler) updateConditions(keydb *keydbv1.Keydb, readyReplicas, desiredReplicas, currentReplicas int32) {
-	// Ready condition
+	//  Ready condition
 	readyCondition := metav1.Condition{
 		Type:               keydbv1.ConditionTypeReady,
 		Status:             metav1.ConditionFalse,
@@ -239,7 +239,7 @@ func (r *KeydbReconciler) updateConditions(keydb *keydbv1.Keydb, readyReplicas, 
 
 	meta.SetStatusCondition(&keydb.Status.Conditions, readyCondition)
 
-	// Progressing condition
+	//  Progressing condition
 	progressingCondition := metav1.Condition{
 		Type:               keydbv1.ConditionTypeProgressing,
 		Status:             metav1.ConditionFalse,
@@ -264,13 +264,13 @@ func (r *KeydbReconciler) updateConditions(keydb *keydbv1.Keydb, readyReplicas, 
 	meta.SetStatusCondition(&keydb.Status.Conditions, progressingCondition)
 }
 
-// updateReplicaStatus updates the replica status in the KeyDB status
+//  updateReplicaStatus updates the replica status in the KeyDB status
 func (r *KeydbReconciler) updateReplicaStatus(ctx context.Context, keydb *keydbv1.Keydb, sts *appsv1.StatefulSet) {
 	if sts == nil {
 		return
 	}
 
-	// Get pod list
+	//  Get pod list
 	podList := &corev1.PodList{}
 	labels := map[string]string{"apps": keydb.Name}
 	listOpts := []client.ListOption{
@@ -307,7 +307,7 @@ func (r *KeydbReconciler) updateReplicaStatus(ctx context.Context, keydb *keydbv
 	}
 }
 
-// isPodReady checks if a pod is ready
+//  isPodReady checks if a pod is ready
 func isPodReady(pod *corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady {
@@ -317,7 +317,7 @@ func isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
-// SetupWithManager sets up the controller with the Manager.
+//  SetupWithManager sets up the controller with the Manager.
 func (r *KeydbReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&keydbv1.Keydb{}).
