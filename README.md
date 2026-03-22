@@ -1,10 +1,6 @@
 # 🚀 KeyDB Kubernetes Operator
 
 <p>
-  <img src="https://github.com/rsingh0101/keydb-operator/blob/main/images/k8skeydb.png" width="220" />
-</p>
-
-<p>
   <b>Production-ready Kubernetes Operator for KeyDB</b><br/>
   Automated lifecycle, replication, scaling, and resilience management.
 </p>
@@ -133,15 +129,6 @@ kubebuilder edit --plugins=helm/v1-alpha
 ---
 
 ## 🧹 Uninstall
-<<<<<<< HEAD
-=======
-
-```
-kubectl delete -k config/samples/
-make uninstall
-make undeploy
-```
->>>>>>> origin/production
 
 ```
 kubectl delete -k config/samples/
