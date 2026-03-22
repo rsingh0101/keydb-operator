@@ -11,6 +11,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+const replicationModeMasterMaster = "master-master"
+
 func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1.ConfigMap, error) {
 	labels := map[string]string{"apps": k.Name}
 
@@ -42,7 +44,7 @@ func GenerateKeydbConfigMap(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1
 			"repl-diskless-sync yes",
 			"repl-diskless-sync-delay 0",
 		)
-	case "master-master":
+	case replicationModeMasterMaster:
 		config = append(config,
 			"active-replica yes",
 			"multi-master yes",

@@ -62,32 +62,32 @@ type KeydbReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	var keydb keydbv1.Keydb
 	if err := r.Get(ctx, req.NamespacedName, &keydb); err != nil {
-		log.Error(err, "unable to fetch Keydb")
+		logger.Error(err, "unable to fetch Keydb")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	//Handle deletion
-	if !keydb.ObjectMeta.DeletionTimestamp.IsZero() {
+	// Handle deletion
+	if !keydb.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&keydb, keydbFinalizer) {
-			//finalizer logic
+			// finalizer logic
 			controllerutil.RemoveFinalizer(&keydb, keydbFinalizer)
 			if err := r.Update(ctx, &keydb); err != nil {
-				log.Error(err, "failed to remove finalizer from keydb")
+				logger.Error(err, "failed to remove finalizer from keydb")
 				return ctrl.Result{}, err
 			}
 		}
 		return ctrl.Result{}, nil
 	}
 
-	//Ensure finalizer is present
+	// Ensure finalizer is present
 	if !controllerutil.ContainsFinalizer(&keydb, keydbFinalizer) {
 		controllerutil.AddFinalizer(&keydb, keydbFinalizer)
 		if err := r.Update(ctx, &keydb); err != nil {
-			log.Error(err, "failed to add finalizer to keydb")
+			logger.Error(err, "failed to add finalizer to keydb")
 			return ctrl.Result{}, err
 		}
 	}
@@ -144,7 +144,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// Pod Disruption Budget
 	pdb := k8sresources.GeneratePodDisruptionBudget(&keydb, r.Scheme)
 	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, pdb, log); err != nil {
-		log.Error(err, "failed to create/update PodDisruptionBudget")
+		logger.Error(err, "failed to create/update PodDisruptionBudget")
 		// Don't fail reconciliation if PDB fails, but log it
 	}
 
@@ -155,21 +155,21 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Namespace: keydb.Namespace,
 	}
 	if err := r.Get(ctx, stsKey, &currentSts); err != nil {
-		log.V(1).Info("StatefulSet not found yet, will update status on next reconcile", "error", err)
+		logger.V(1).Info("StatefulSet not found yet, will update status on next reconcile", "error", err)
 	} else {
 		// Update status based on StatefulSet
 		if err := r.updateStatus(ctx, &keydb, &currentSts); err != nil {
-			log.Error(err, "failed to update status")
+			logger.Error(err, "failed to update status")
 		}
 	}
 
-	log.Info("reconcile cycle completed successfully")
+	logger.Info("reconcile cycle completed successfully")
 	return ctrl.Result{}, nil
 }
 
 // updateStatus updates the KeyDB status based on the StatefulSet status
 func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb, sts *appsv1.StatefulSet) error {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// Get current statefulset status
 	readyReplicas := int32(0)
@@ -211,7 +211,7 @@ func (r *KeydbReconciler) updateStatus(ctx context.Context, keydb *keydbv1.Keydb
 	r.updateReplicaStatus(ctx, keydb, sts)
 
 	if err := r.Status().Update(ctx, keydb); err != nil {
-		log.Error(err, "failed to update KeyDB status")
+		logger.Error(err, "failed to update KeyDB status")
 		return err
 	}
 
