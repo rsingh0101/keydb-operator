@@ -59,7 +59,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	//services
+	// services
 	svc, err := k8sresources.GenerateService(&keydb, r.Scheme)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -70,7 +70,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	//configmap
+	// configmap
 	configmap, err := k8sresources.GenerateKeydbConfigMap(&keydb, r.Scheme)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -81,16 +81,16 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	//secret
+	// secret
 	if err := k8sresources.CreateorUpdateResource(ctx, r.Client, r.Scheme, k8sresources.GenerateSecret(&keydb, r.Scheme, r.Client), log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	//ServiceAccount
+	// ServiceAccount
 	if err := k8sresources.CreateorUpdateResource(ctx, r.Client, r.Scheme, k8sresources.GenerateServiceAccount(&keydb, r.Scheme), log); err != nil {
 		return ctrl.Result{}, err
 	}
-	//statefulset
+	// statefulset
 	if err := k8sresources.CreateorUpdateResource(ctx, r.Client, r.Scheme, k8sresources.GenerateStatefulSet(&keydb, r.Scheme), log); err != nil {
 		return ctrl.Result{}, err
 	}
