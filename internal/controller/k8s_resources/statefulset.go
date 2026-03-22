@@ -20,6 +20,10 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 	storageClassName := k.Spec.Persistence.StorageClassName
 	var volumeClaimTemplates []corev1.PersistentVolumeClaim
 	if k.Spec.Persistence.Size != "" {
+		var scPtr *string
+		if storageClassName != "" {
+			scPtr = &storageClassName
+		}
 		volumeClaimTemplates = []corev1.PersistentVolumeClaim{
 			{
 				ObjectMeta: metav1.ObjectMeta{
@@ -34,7 +38,7 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 							corev1.ResourceStorage: resource.MustParse(k.Spec.Persistence.Size),
 						},
 					},
-					StorageClassName: &storageClassName,
+					StorageClassName: scPtr,
 				},
 			},
 		}
@@ -59,6 +63,13 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 			MountPath: "/tmp",
 			SubPath:   "tmp-dir",
 		},
+	}
+
+	secretName := k.Name + "-secret"
+	secretKey := "password"
+	if k.Spec.PasswordSecret != nil {
+		secretName = k.Spec.PasswordSecret.Name
+		secretKey = k.Spec.PasswordSecret.Key
 	}
 
 	volumes := []corev1.Volume{
@@ -87,10 +98,10 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 			Name: k.Name + "-secret",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: k.Name + "-secret",
+					SecretName: secretName,
 					Items: []corev1.KeyToPath{
 						{
-							Key:  "password",
+							Key:  secretKey,
 							Path: "password",
 						},
 					},
@@ -174,7 +185,7 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 							},
 							Args: []string{
 								"-ec",
-								`. /opt/bitnami/scripts/keydb-env.sh;args=("/opt/bitnami/keydb/etc/keydb.conf");args+=("--requirepass" "$KEYDB_PASSWORD");args+=("--masterauth" "$KEYDB_MASTER_PASSWORD");exec keydb-server "${args[@]}"`,
+								`. /opt/bitnami/scripts/keydb-env.sh;if [ -f /opt/bitnami/scripts/health/fix_replication_config.sh ]; then bash /opt/bitnami/scripts/health/fix_replication_config.sh || true; fi;CONFIG_FILE="${KEYDB_MODIFIED_CONFIG:-/opt/bitnami/keydb/etc/keydb.conf}";args=("${CONFIG_FILE}");args+=("--requirepass" "$KEYDB_PASSWORD");args+=("--masterauth" "$KEYDB_MASTER_PASSWORD");exec keydb-server "${args[@]}"`,
 							},
 							Ports: []corev1.ContainerPort{
 								{
@@ -233,16 +244,145 @@ func GenerateStatefulSet(k *keydbv1.Keydb, scheme *runtime.Scheme) *appsv1.State
 								},
 							},
 							VolumeMounts: volumeMounts,
+							// Add resources if specified, otherwise use defaults
+							Resources: getContainerResources(k),
+						},
+						{
+							SecurityContext: &corev1.SecurityContext{
+								RunAsNonRoot: &[]bool{true}[0],
+								RunAsUser:    &[]int64{1001}[0],
+								RunAsGroup:   &[]int64{1001}[0],
+							},
+							Name:  "config-reloader",
+							Image: k.Spec.Image,
+							Command: []string{
+								"/bin/bash",
+							},
+							Args: []string{
+								"-c",
+								". /opt/bitnami/scripts/keydb-env.sh; exec bash /opt/bitnami/scripts/health/config_reloader.sh",
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "KEYDB_PASSWORD_FILE",
+									Value: "/opt/bitnami/keydb/secrets/password",
+								},
+								{
+									Name:  "KEYDB_PORT_NUMBER",
+									Value: "6379",
+								},
+							},
+							VolumeMounts: volumeMounts,
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("32Mi"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
+								},
+							},
 						},
 					},
 					Volumes: volumes,
+					// Add pod anti-affinity for better distribution
+					Affinity: getPodAffinity(labels),
 				},
 			},
 		},
 	}
 
+	if k.Spec.Metrics.Enabled {
+		metricsImage := "oliver006/redis_exporter:latest"
+		if k.Spec.Metrics.Image != "" {
+			metricsImage = k.Spec.Metrics.Image
+		}
+		sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, corev1.Container{
+			Name:  "metrics",
+			Image: metricsImage,
+			Env: []corev1.EnvVar{
+				{
+					Name: "REDIS_PASSWORD",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Key: secretKey,
+						},
+					},
+				},
+				{
+					Name:  "REDIS_ADDR",
+					Value: "redis://localhost:6379",
+				},
+			},
+			Ports: []corev1.ContainerPort{
+				{
+					Name:          "metrics",
+					ContainerPort: 9121,
+				},
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("10m"),
+					corev1.ResourceMemory: resource.MustParse("16Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("50m"),
+					corev1.ResourceMemory: resource.MustParse("64Mi"),
+				},
+			},
+		})
+	}
+
 	_ = ctrl.SetControllerReference(k, sts, scheme)
 	return sts
+}
+
+// getContainerResources returns resource requirements for the container
+func getContainerResources(k *keydbv1.Keydb) corev1.ResourceRequirements {
+	// If resources are specified in spec, use them
+	if !isEmptyResources(k.Spec.Resources) {
+		return k.Spec.Resources
+	}
+
+	// Default resources if not specified
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+	}
+}
+
+// isEmptyResources checks if resource requirements are empty
+func isEmptyResources(res corev1.ResourceRequirements) bool {
+	return len(res.Requests) == 0 && len(res.Limits) == 0
+}
+
+// getPodAffinity returns pod affinity configuration for better pod distribution
+func getPodAffinity(labels map[string]string) *corev1.Affinity {
+	return &corev1.Affinity{
+		PodAntiAffinity: &corev1.PodAntiAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+				{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: labels,
+						},
+						TopologyKey: "kubernetes.io/hostname",
+					},
+				},
+			},
+		},
+	}
 }
 
 // normalizeFQDN appends .svc.cluster.local if the user provided a short service name.

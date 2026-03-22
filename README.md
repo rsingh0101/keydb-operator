@@ -133,6 +133,15 @@ kubebuilder edit --plugins=helm/v1-alpha
 ---
 
 ## 🧹 Uninstall
+<<<<<<< HEAD
+=======
+
+```
+kubectl delete -k config/samples/
+make uninstall
+make undeploy
+```
+>>>>>>> origin/production
 
 ```
 kubectl delete -k config/samples/

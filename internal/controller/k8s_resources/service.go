@@ -56,6 +56,16 @@ func GenerateService(k *keydbv1.Keydb, scheme *runtime.Scheme) ([]*corev1.Servic
 			},
 		},
 	}
+
+	if k.Spec.Metrics.Enabled {
+		metricsPort := corev1.ServicePort{
+			Name: "metrics",
+			Port: 9121,
+		}
+		clusterSvc.Spec.Ports = append(clusterSvc.Spec.Ports, metricsPort)
+		headlessSvc.Spec.Ports = append(headlessSvc.Spec.Ports, metricsPort)
+	}
+
 	if err := ctrl.SetControllerReference(k, headlessSvc, scheme); err != nil {
 		return nil, err
 	}

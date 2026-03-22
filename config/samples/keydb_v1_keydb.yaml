@@ -8,12 +8,16 @@ metadata:
   namespace: default
 spec:
   replicas: 3
-  image: eqalpha/keydb
-  password: password
+  image: bitnamilegacy/keydb:latest
   persistence:
     enabled: true
     size: 1Gi
   replication:
     mode: master-master
     enabled: true
-    domain: keydb-svc.two:6379
+    domain:
+      - keydb-two-headless.default.svc.cluster.local
+    port: 6379
+  metrics:
+    enabled: true
+    image: oliver006/redis_exporter:latest
