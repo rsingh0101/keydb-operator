@@ -98,7 +98,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 	for _, cm := range cmList {
-		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, cm, log); err != nil {
+		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, cm, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -107,7 +107,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	var secretHash string
 	if secret != nil {
 		secretHash = k8sresources.HashSecret(secret)
-		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, secret, log); err != nil {
+		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, secret, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 	} else if keydb.Spec.PasswordSecret != nil {
@@ -121,7 +121,7 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	sts.Spec.Template.Annotations["checksum/secret"] = secretHash
 
-	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, sts, log); err != nil {
+	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, sts, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -131,19 +131,19 @@ func (r *KeydbReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 	for _, svc := range svcList {
-		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, svc, log); err != nil {
+		if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, svc, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	// ServiceAccount
-	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, k8sresources.GenerateServiceAccount(&keydb, r.Scheme), log); err != nil {
+	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, k8sresources.GenerateServiceAccount(&keydb, r.Scheme), logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Pod Disruption Budget
 	pdb := k8sresources.GeneratePodDisruptionBudget(&keydb, r.Scheme)
-	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, pdb, log); err != nil {
+	if err := k8sresources.ApplyResource(ctx, r.Client, r.Scheme, &keydb, pdb, logger); err != nil {
 		logger.Error(err, "failed to create/update PodDisruptionBudget")
 		// Don't fail reconciliation if PDB fails, but log it
 	}
